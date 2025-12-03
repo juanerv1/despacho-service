@@ -1,90 +1,42 @@
-from . import db
-from .models import OrdenDespacho, OrdenDespachoDetalles
-from datetime import datetime
+from database.models import db, OrdenDespacho, OrdenDespachoDetalle
 
-def crear_orden_despacho(id_venta, cliente_nombre, direccion_entrega, cliente_telefono=None, fecha_estimada_entrega=None, estado="pendiente"):
-    """Crear una nueva orden de despacho"""
+def crear_orden(data, detalles):
     orden = OrdenDespacho(
-        id_venta=id_venta,
-        cliente_nombre=cliente_nombre,
-        cliente_telefono=cliente_telefono,
-        direccion_entrega=direccion_entrega,
-        fecha_estimada_entrega=datetime.strptime(fecha_estimada_entrega, '%Y-%m-%d').date() if fecha_estimada_entrega else None,
-        estado=estado
+        id_venta=data["id_venta"],
+        cliente_nombre=data["cliente_nombre"],
+        cliente_telefono=data["cliente_telefono"],
+        direccion_entrega=data["direccion_entrega"],
+        fecha_estimada_entrega=data.get("fecha_estimada_entrega"),
+        estado=data["estado"]
     )
+
     db.session.add(orden)
+    db.session.flush()
+
+    for d in detalles:
+        det = OrdenDespachoDetalle(
+            id_orden=orden.id_orden,
+            id_producto=d["id_producto"],
+            nombre_producto=d["nombre_producto"],
+            cantidad_producto=d["cantidad_producto"]
+        )
+        db.session.add(det)
+
     db.session.commit()
     return orden
 
-def agregar_detalle_orden(id_orden, id_producto, nombre_producto, cantidad_producto):
-    """Agregar un producto a la orden de despacho"""
-    detalle = OrdenDespachoDetalles(
-        id_orden=id_orden,
-        id_producto=id_producto,
-        nombre_producto=nombre_producto,
-        cantidad_producto=cantidad_producto
-    )
-    db.session.add(detalle)
-    db.session.commit()
-    return detalle
 
 def obtener_orden_por_id(id_orden):
-    """Obtener una orden con todos sus detalles"""
     return OrdenDespacho.query.get(id_orden)
 
-def obtener_todas_ordenes():
-    """Obtener todas las órdenes de despacho"""
-    return OrdenDespacho.query.all()
 
-def actualizar_estado_orden(id_orden, nuevo_estado):
-    """Actualizar el estado de una orden"""
-    orden = OrdenDespacho.query.get(id_orden)
-    if orden:
-        orden.estado = nuevo_estado
-        db.session.commit()
-    return orden
+def obtener_ordenes(filtros):
+    query = OrdenDespacho.query
 
-def marcar_como_despachado(id_orden):
-    """Marcar una orden como despachada con validaciones"""
-    orden = OrdenDespacho.query.get(id_orden)
-    
-    if not orden:
-        return None, "Orden no encontrada"
-    
-    if orden.estado == "despachado":
-        return orden, "La orden ya está despachada"
-    
-    if orden.estado not in ["pendiente", "listo para despacho"]:
-        return orden, f"No se puede despachar una orden en estado: {orden.estado}"
-    
-    orden.estado = "despachado"
-    db.session.commit()
-    
-    return orden, None
+    if "estado" in filtros:
+        query = query.filter_by(estado=filtros["estado"])
 
-def crear_orden_completa(datos_orden):
-    """Crear una orden completa con sus productos"""
-    try:
-        # Crear la orden principal
-        orden = crear_orden_despacho(
-            id_venta=datos_orden['id_venta'],
-            cliente_nombre=datos_orden['cliente_nombre'],
-            cliente_telefono=datos_orden.get('cliente_telefono'),
-            direccion_entrega=datos_orden['direccion_entrega'],
-            fecha_estimada_entrega=datos_orden.get('fecha_estimada_envio'),
-            estado=datos_orden.get('estado', 'pendiente')
-        )
-        
-        # Agregar los productos
-        for producto in datos_orden['productos']:
-            agregar_detalle_orden(
-                id_orden=orden.id_orden,
-                id_producto=producto['id_producto'],
-                nombre_producto=producto['nombre'],
-                cantidad_producto=producto['cantidad']
-            )
-        
-        return orden
-    except Exception as e:
-        db.session.rollback()
-        raise e
+    if "id_venta" in filtros:
+        query = query.filter_by(id_venta=filtros["id_venta"])
+
+    return query.all()

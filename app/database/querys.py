@@ -1,90 +1,72 @@
-from . import db
-from .models import OrdenDespacho, OrdenDespachoDetalles
 from datetime import datetime
+from database.models import db, OrdenDespacho, OrdenDespachoDetalle
 
-def crear_orden_despacho(id_venta, cliente_nombre, direccion_entrega, cliente_telefono=None, fecha_estimada_entrega=None, estado="pendiente"):
-    """Crear una nueva orden de despacho"""
-    orden = OrdenDespacho(
-        id_venta=id_venta,
-        cliente_nombre=cliente_nombre,
-        cliente_telefono=cliente_telefono,
-        direccion_entrega=direccion_entrega,
-        fecha_estimada_entrega=datetime.strptime(fecha_estimada_entrega, '%Y-%m-%d').date() if fecha_estimada_entrega else None,
-        estado=estado
-    )
-    db.session.add(orden)
-    db.session.commit()
-    return orden
-
-def agregar_detalle_orden(id_orden, id_producto, nombre_producto, cantidad_producto):
-    """Agregar un producto a la orden de despacho"""
-    detalle = OrdenDespachoDetalles(
-        id_orden=id_orden,
-        id_producto=id_producto,
-        nombre_producto=nombre_producto,
-        cantidad_producto=cantidad_producto
-    )
-    db.session.add(detalle)
-    db.session.commit()
-    return detalle
-
-def obtener_orden_por_id(id_orden):
-    """Obtener una orden con todos sus detalles"""
-    return OrdenDespacho.query.get(id_orden)
-
-def obtener_todas_ordenes():
-    """Obtener todas las órdenes de despacho"""
-    return OrdenDespacho.query.all()
-
-def actualizar_estado_orden(id_orden, nuevo_estado):
-    """Actualizar el estado de una orden"""
-    orden = OrdenDespacho.query.get(id_orden)
-    if orden:
-        orden.estado = nuevo_estado
-        db.session.commit()
-    return orden
-
-def marcar_como_despachado(id_orden):
-    """Marcar una orden como despachada con validaciones"""
-    orden = OrdenDespacho.query.get(id_orden)
+def crear_orden(data):
     
-    if not orden:
-        return None, "Orden no encontrada"
-    
-    if orden.estado == "despachado":
-        return orden, "La orden ya está despachada"
-    
-    if orden.estado not in ["pendiente", "listo para despacho"]:
-        return orden, f"No se puede despachar una orden en estado: {orden.estado}"
-    
-    orden.estado = "despachado"
-    db.session.commit()
-    
-    return orden, None
-
-def crear_orden_completa(datos_orden):
-    """Crear una orden completa con sus productos"""
     try:
-        # Crear la orden principal
-        orden = crear_orden_despacho(
-            id_venta=datos_orden['id_venta'],
-            cliente_nombre=datos_orden['cliente_nombre'],
-            cliente_telefono=datos_orden.get('cliente_telefono'),
-            direccion_entrega=datos_orden['direccion_entrega'],
-            fecha_estimada_entrega=datos_orden.get('fecha_estimada_envio'),
-            estado=datos_orden.get('estado', 'pendiente')
+        orden = OrdenDespacho(
+            id_venta=data["id_venta"],
+            cliente_nombre=data["cliente_nombre"],
+            cliente_telefono=data["cliente_telefono"],
+            direccion_entrega=data["direccion_entrega"],
+            fecha_estimada_entrega=datetime.strptime(data.get("fecha_estimada_entrega"), '%Y-%m-%d') 
+            if data.get("fecha_estimada_entrega") else None,
+            estado=data["estado"]
         )
-        
-        # Agregar los productos
-        for producto in datos_orden['productos']:
-            agregar_detalle_orden(
+
+        db.session.add(orden)
+        db.session.flush()
+
+        for d in data["productos"]:
+            det = OrdenDespachoDetalle(
                 id_orden=orden.id_orden,
-                id_producto=producto['id_producto'],
-                nombre_producto=producto['nombre'],
-                cantidad_producto=producto['cantidad']
+                id_producto=d["id_producto"],
+                nombre_producto=d["nombre"],
+                cantidad_producto=d["cantidad"]
             )
-        
+            db.session.add(det)
+
+        db.session.commit()
         return orden
+    
     except Exception as e:
         db.session.rollback()
         raise e
+
+
+def actualizar_orden(orden_id, **campos):
+    """Actualizar una orden existente"""
+    orden = OrdenDespacho.query.get(orden_id)
+    
+    if not orden:
+        return None
+    
+    for campo, valor in campos.items():
+        if hasattr(orden, campo):
+            # Manejo especial para fecha
+            if campo == "fecha_estimada_entrega" and valor:
+                setattr(orden, campo, datetime.strptime(valor, '%Y-%m-%d'))
+            else:
+                setattr(orden, campo, valor)
+    
+    db.session.commit()
+    return orden
+
+
+def obtener_ordenes(id_orden=None, **filtros):
+    """Obtener órdenes - puede ser por ID específico o con filtros"""
+    
+    # Si se pasa un ID específico, devolver esa orden
+    if id_orden is not None:
+        return OrdenDespacho.query.get(id_orden)
+    
+    # Si no hay ID, aplicar filtros
+    query = OrdenDespacho.query
+    
+    if "estado" in filtros:
+        query = query.filter_by(estado=filtros["estado"])
+    
+    if "id_venta" in filtros:
+        query = query.filter_by(id_venta=filtros["id_venta"])
+    
+    return query.all()

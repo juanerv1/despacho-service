@@ -1,15 +1,10 @@
-FROM python:3.9-slim
-
-# Instalar curl para health checks
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+FROM python:3.10
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY . .
 
 RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . .
 
 EXPOSE 5000
 
